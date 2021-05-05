@@ -622,6 +622,10 @@ bitToCarryOp(bts, 0xAB, 5)
 bitToCarryOp(btr, 0xB3, 6)
 bitToCarryOp(btc, 0xBB, 7)
 
+genAssembler cmc: (): (0xF5)
+genAssembler clc: (): (0xF8)
+genAssembler stc: (): (0xF9)
+
 genAssembler imul:
     (rm8): (rex, 0xF6, modrm(rm, 5))
     (rm16): (op16, rex, 0xF7, modrm(rm, 5))
