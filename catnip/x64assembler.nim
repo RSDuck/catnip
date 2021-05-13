@@ -118,10 +118,10 @@ type
         of rmIndirectGlobal:
             globalPtr: pointer
 
-    Rm8 = Rm[Register8]
-    Rm16 = Rm[Register16]
-    Rm32 = Rm[Register32]
-    Rm64 = Rm[Register64]
+    Rm8* = Rm[Register8]
+    Rm16* = Rm[Register16]
+    Rm32* = Rm[Register32]
+    Rm64* = Rm[Register64]
 
     BackwardsLabel = distinct int
     ForwardsLabel = object
@@ -132,7 +132,18 @@ type
         data*: ptr UncheckedArray[byte]
         offset*: int
 
-proc curAdr(assembler: AssemblerX64): int64 =
+when defined(windows):
+    const
+        param1* = regRcx
+        param2* = regRdx
+        param3* = regR8
+        param4* = regR9
+
+        stackShadow* = 0x20
+else:
+    {.fatal: "add parameters for system v here".}
+
+proc curAdr*(assembler: AssemblerX64): int64 =
     cast[int64](assembler.data) + assembler.offset
 
 proc initAssemblerX64*(data: ptr UncheckedArray[byte]): AssemblerX64 =
@@ -191,7 +202,7 @@ proc needsRex8[T](reg: T): bool =
         false
 
 proc writeRex[T, U](assembler: var AssemblerX64, rm: Rm[T], reg: U, is64Bit: bool) =
-    let precond = is64Bit or ord(reg) >= 8 or reg.needsRex8()
+    let precond = is64Bit or reg.needsRex8()
 
     case rm.kind
     of rmDirect:
@@ -497,7 +508,7 @@ genAssembler mov:
         if rm.kind == rmDirect:
             (rex(ord(rm.directReg) >= 8), 0xB8 + (ord(rm.directReg) and 0x7), imm)
         else:
-            (rex, 0xC7, modrm(rm, 0))
+            (rex, 0xC7, modrm(rm, 0), imm)
     (rm64, imm32):
         (op64, 0xC7, modrm(rm, 0), imm)
     (reg64, imm64):
@@ -536,11 +547,19 @@ template shiftOp(name, op): untyped {.dirty.} =
                 (rex, 0xD1, modrm(rm, op))
             else:
                 (op64, 0xC1, modrm(rm, op), imm)
+
+        (rm8): (rex, 0xD2, modrm(rm, op))
+        (rm16): (op16, rex, 0xD3, modrm(rm, op))
+        (rm32): (rex, 0xD3, modrm(rm, op))
+        (rm64): (op64, 0xD3, modrm(rm, op))
+
+shiftOp(rol, 0)
+shiftOp(ror, 1)
 shiftOp(rcl, 2)
 shiftOp(rcr, 3)
+shiftOp(sshl, 4)
 shiftOp(sshr, 5)
-shiftOp(sshl, 6)
-shiftOp(asr, 7)
+shiftOp(sar, 7)
 
 genAssembler test:
     (rm8, reg8): (rex, 0x84, modrm(rm, reg))

@@ -57,9 +57,12 @@ proc main =
 
     s.rcl(reg(regAl), 1)
     s.rcl(reg(regAl), 2)
-    s.asr(reg(regAx), 2)
+    s.sar(reg(regAx), 2)
     s.sshl(reg(regEax), 4)
     s.rcr(reg(regR8), 21)
+    s.rcr(reg(regR8d))
+    s.ror(reg(regR8))
+    s.rol(reg(regR8b))
 
     s.test(reg(regAl), 1)
     s.test(mem32(regRax), 1)
@@ -165,6 +168,20 @@ proc main =
     s.jmp(reg(regRax))
     s.jmp(reg(regR14))
     s.call(reg(regR14))
+
+    s.push(reg(regRdi))
+    s.push(reg(regRsi))
+    s.push(reg(regRbx))
+    s.push(reg(regR12))
+    s.push(reg(regR13))
+    s.push(reg(regR14))
+    s.push(reg(regR15))
+    s.push(reg(regRbp))
+    s.sub(reg(regRsp), 8 + 1234)
+
+    s.mov(reg(regRbp), param1)
+
+    s.mov(mem32(regRbp, int32 1234), cast[int32](0xFFFF))
 
     let stream = newFileStream("assembled.bin", fmWrite)
     stream.writeData(addr data[0], s.offset)
