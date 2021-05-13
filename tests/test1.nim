@@ -183,6 +183,9 @@ proc main =
 
     s.mov(mem32(regRbp, int32 1234), cast[int32](0xFFFF))
 
+    s.cmov(regEax, reg(regR12d), condNotLess)
+    s.cmov(regRax, mem64(regR15), condNotLess)
+
     let stream = newFileStream("assembled.bin", fmWrite)
     stream.writeData(addr data[0], s.offset)
     stream.close()

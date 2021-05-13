@@ -683,6 +683,11 @@ genAssembler lea:
     (reg64, rm32): (0x67, op64, rex, 0x8D, modrm(rm, reg))
     (reg64, rm64): (op64, rex, 0x8D, modrm(rm, reg))
 
+genAssembler cmov:
+    (reg16, rm16, cond): (op16, rex, 0x0F, 0x40 + ord(cond), modrm(rm, reg))
+    (reg32, rm32, cond): (rex, 0x0F, 0x40 + ord(cond), modrm(rm, reg))
+    (reg64, rm64, cond): (op64, 0x0F, 0x40 + ord(cond), modrm(rm, reg))
+
 proc jmp*(assembler: var AssemblerX64, target: pointer) =
     let offset8 = int32(cast[int64](target) - (assembler.curAdr + 2))
     if offset8.fitsInt8():
