@@ -202,7 +202,7 @@ proc needsRex8[T](reg: T): bool =
         false
 
 proc writeRex[T, U](assembler: var AssemblerX64, rm: Rm[T], reg: U, is64Bit: bool) =
-    let precond = is64Bit or reg.needsRex8()
+    let precond = is64Bit or reg.needsRex8() or ord(reg) >= 8
 
     case rm.kind
     of rmDirect:
