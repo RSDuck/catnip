@@ -33,8 +33,8 @@ type
         regR9w
         regR10w
         regR11w
-        regR13w
         regR12w
+        regR13w
         regR14w
         regR15w
 
