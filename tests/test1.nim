@@ -304,6 +304,11 @@ proc main =
     testSseMovLikeOneWay(cvtpd2dq)
     testSseMovLikeOneWay(cvttpd2dq)
 
+    s.shufps(regXmm0, reg(regXmm1), 0)
+    s.shufps(regXmm12, memXmm(regRax), cast[int8](0xFF))
+    s.shufpd(regXmm0, reg(regXmm1), 0)
+    s.shufpd(regXmm12, memXmm(regRax), cast[int8](0x3))
+
     let stream = newFileStream("assembled.bin", fmWrite)
     stream.writeData(addr data[0], s.offset)
     stream.close()

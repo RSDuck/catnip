@@ -1000,3 +1000,8 @@ genAssembler cvttpd2dq:
     (regXmm, rmXmm): (0x66, rex, 0x0F, 0xE6, modrm(rm, reg))
 genAssembler cvtdq2pd:
     (regXmm, rmXmm): (0xF3, rex, 0x0F, 0xE6, modrm(rm, reg))
+
+genAssembler shufps:
+    (regXmm, rmXmm, imm8): (rex, 0x0F, 0xC6, modrm(rm, reg), imm8)
+genAssembler shufpd:
+    (regXmm, rmXmm, imm8): (0x66, rex, 0x0F, 0xC6, modrm(rm, reg), imm8)
