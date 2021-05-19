@@ -74,6 +74,24 @@ type
         regR14
         regR15
 
+    RegisterXmm* = enum
+        regXmm0
+        regXmm1
+        regXmm2
+        regXmm3
+        regXmm4
+        regXmm5
+        regXmm6
+        regXmm7
+        regXmm8
+        regXmm9
+        regXmm10
+        regXmm11
+        regXmm12
+        regXmm13
+        regXmm14
+        regXmm15
+
     Condition* = enum
         condOverflow
         condNotOverflow
@@ -107,7 +125,8 @@ type
     Rm*[T] = object
         case kind: RmKind
         of rmDirect:
-            directReg: T
+            when T isnot void:
+                directReg: T
         of rmIndirectScaled:
             simpleIndex: Register64
             simpleScale: RmScale
@@ -123,6 +142,8 @@ type
     Rm16* = Rm[Register16]
     Rm32* = Rm[Register32]
     Rm64* = Rm[Register64]
+    RmXmm* = Rm[RegisterXmm]
+    RmMemOnly* = Rm[void]
 
     BackwardsLabel = distinct int
     ForwardsLabel = object
@@ -182,6 +203,8 @@ declareMemCtors(8)
 declareMemCtors(16)
 declareMemCtors(32)
 declareMemCtors(64)
+declareMemCtors(Xmm)
+declareMemCtors(MemOnly)
 
 proc isDirectReg[T](rm: Rm[T], reg: T): bool =
     rm.kind == rmDirect and rm.directReg == reg
@@ -207,8 +230,11 @@ proc writeRex[T, U](assembler: var AssemblerX64, rm: Rm[T], reg: U, is64Bit: boo
 
     case rm.kind
     of rmDirect:
-        if precond or ord(rm.directReg) >= 8 or rm.directReg.needsRex8():
-            assembler.writeRex is64Bit, ord(reg) >= 8, false, ord(rm.directReg) >= 8
+        when T isnot void:
+            if precond or ord(rm.directReg) >= 8 or rm.directReg.needsRex8():
+                assembler.writeRex is64Bit, ord(reg) >= 8, false, ord(rm.directReg) >= 8
+        else:
+            raiseAssert("memory only operand. Direct register not allowed (how was this constructed?)")
     of rmIndirectScaled:
         if precond or ord(rm.simpleIndex) >= 8 or rm.simpleIndex.needsRex8():
             if rm.simpleScale == rmScale1:
@@ -225,8 +251,11 @@ proc writeRex[T, U](assembler: var AssemblerX64, rm: Rm[T], reg: U, is64Bit: boo
 proc writeModrm[T, U](assembler: var AssemblerX64, rm: Rm[T], reg: U): int =
     case rm.kind
     of rmDirect:
-        assembler.writeField 0b11, byte(reg), byte(rm.directReg)
-        -1
+        when T isnot void:
+            assembler.writeField 0b11, byte(reg), byte(rm.directReg)
+            -1
+        else:
+            raiseAssert("memory only operand. Direct register not allowed (how was this constructed?)")
     of rmIndirectScaled:
         if rm.simpleScale == rmScale1:
             if rm.simpleIndex != regRsp and rm.simpleIndex != regR12:
@@ -399,6 +428,10 @@ macro genAssembler(name, instr: untyped): untyped =
                 finalProc[3].add(newIdentDefs(ident"reg", bindSym"Register32"))
             of "reg64":
                 finalProc[3].add(newIdentDefs(ident"reg", bindSym"Register64"))
+            of "regXmm":
+                finalProc[3].add(newIdentDefs(ident"reg", bindSym"RegisterXmm"))
+            of "regXmm2":
+                finalProc[3].add(newIdentDefs(ident"reg2", bindSym"RegisterXmm"))
             of "rm8":
                 finalProc[3].add(newIdentDefs(ident"rm", bindSym"Rm8"))
             of "rm16":
@@ -407,6 +440,10 @@ macro genAssembler(name, instr: untyped): untyped =
                 finalProc[3].add(newIdentDefs(ident"rm", bindSym"Rm32"))
             of "rm64":
                 finalProc[3].add(newIdentDefs(ident"rm", bindSym"Rm64"))
+            of "rmXmm":
+                finalProc[3].add(newIdentDefs(ident"rm", bindSym"RmXmm"))
+            of "rmMemOnly":
+                finalProc[3].add(newIdentDefs(ident"rm", bindSym"RmMemOnly"))
             of "imm8":
                 finalProc[3].add(newIdentDefs(ident"imm", bindSym"int8"))
             of "imm16":
@@ -679,13 +716,15 @@ unop(mul, 4)
 unop(ddiv, 6)
 unop(idiv, 7)
 
-genAssembler lea:
-    (reg16, rm32): (0x67, op16, rex, 0x8D, modrm(rm, reg))
-    (reg16, rm64): (op16, rex, 0x8D, modrm(rm, reg))
-    (reg32, rm32): (0x67, rex, 0x8D, modrm(rm, reg))
-    (reg32, rm64): (rex, 0x8D, modrm(rm, reg))
-    (reg64, rm32): (0x67, op64, rex, 0x8D, modrm(rm, reg))
-    (reg64, rm64): (op64, rex, 0x8D, modrm(rm, reg))
+genAssembler lea32:
+    (reg16, rmMemOnly): (0x67, op16, rex, 0x8D, modrm(rm, reg))
+    (reg32, rmMemOnly): (0x67, rex, 0x8D, modrm(rm, reg))
+    (reg64, rmMemOnly): (0x67, op64, rex, 0x8D, modrm(rm, reg))
+genAssembler lea64:
+    (reg16, rmMemOnly): (op16, rex, 0x8D, modrm(rm, reg))
+    (reg32, rmMemOnly): (rex, 0x8D, modrm(rm, reg))
+    (reg64, rmMemOnly): (op64, rex, 0x8D, modrm(rm, reg))
+
 
 genAssembler cmov:
     (reg16, rm16, cond): (op16, rex, 0x0F, 0x40 + ord(cond), modrm(rm, reg))
@@ -813,3 +852,151 @@ proc nop*(assembler: var AssemblerX64, bytes = 1) =
             assembler.write 0x00'u8 
             assembler.write 0x00'u32
             remainingBytes -= 9
+
+template normalSseOp(name, op): untyped {.dirty.} =
+    genAssembler `name ps`: (regXmm, rmXmm): (rex, 0x0F, op, modrm(rm, reg))
+    genAssembler `name ss`: (regXmm, rmXmm): (0xF3, rex, 0x0F, op, modrm(rm, reg))
+    genAssembler `name pd`: (regXmm, rmXmm): (0x66, rex, 0x0F, op, modrm(rm, reg))
+    genAssembler `name sd`: (regXmm, rmXmm): (0xF2, rex, 0x0F, op, modrm(rm, reg))
+
+normalSseOp(sqrt, 0x51)
+normalSseOp(add, 0x58)
+normalSseOp(mul, 0x59)
+normalSseOp(sub, 0x5C)
+normalSseOp(ddiv, 0x5E)
+normalSseOp(min, 0x5D)
+normalSseOp(max, 0x5F)
+
+template weirdSseBitOp(name, op): untyped {.dirty.} =
+    genAssembler `name ps`: (regXmm, rmXmm): (rex, 0x0F, op, modrm(rm, reg))
+    genAssembler `name pd`: (regXmm, rmXmm): (0x66, rex, 0x0F, op, modrm(rm, reg))
+
+weirdSseBitOp(aand, 0x54)
+weirdSseBitOp(andn, 0x55)
+weirdSseBitOp(oor, 0x56)
+weirdSseBitOp(xxor, 0x57)
+
+genAssembler rsqrtps: (regXmm, rmXmm): (rex, 0x0F, 0x52, modrm(rm, reg))
+genAssembler rsqrtss: (regXmm, rmXmm): (0xF3, rex, 0x0F, 0x52, modrm(rm, reg))
+genAssembler rcpps: (regXmm, rmXmm): (rex, 0x0F, 0x53, modrm(rm, reg))
+genAssembler rcpss: (regXmm, rmXmm): (0xF3, rex, 0x0F, 0x53, modrm(rm, reg))
+
+genAssembler movups:
+    (regXmm, rmXmm): (rex, 0x0F, 0x10, modrm(rm, reg))
+    (rmXmm, regXmm): (rex, 0x0F, 0x11, modrm(rm, reg))
+genAssembler movss:
+    (regXmm, rmXmm): (0xF3, rex, 0x0F, 0x10, modrm(rm, reg))
+    (rmXmm, regXmm): (0xF3, rex, 0x0F, 0x11, modrm(rm, reg))
+genAssembler movupd:
+    (regXmm, rmXmm): (0x66, rex, 0x0F, 0x10, modrm(rm, reg))
+    (rmXmm, regXmm): (0x66, rex, 0x0F, 0x11, modrm(rm, reg))
+genAssembler movsd:
+    (regXmm, rmXmm): (0xF2, rex, 0x0F, 0x10, modrm(rm, reg))
+    (rmXmm, regXmm): (0xF2, rex, 0x0F, 0x11, modrm(rm, reg))
+
+genAssembler movhlps:
+    (regXmm, regXmm2): (rex, 0x0F, 0x12, modrm(reg(reg2), reg))
+genAssembler movlhps:
+    (regXmm, regXmm2): (rex, 0x0F, 0x16, modrm(reg(reg2), reg))
+
+template sseMovPartMemory(partname, op): untyped {.dirty.} =
+    genAssembler `mov partname ps`:
+        (regXmm, rmMemOnly): (rex, 0x0F, op, modrm(rm, reg))
+        (rmMemOnly, regXmm): (rex, 0x0F, op+1, modrm(rm, reg))
+    genAssembler `mov partname pd`:
+        (regXmm, rmMemOnly): (0x66, rex, 0x0F, op, modrm(rm, reg))
+        (rmMemOnly, regXmm): (0x66, rex, 0x0F, op+1, modrm(rm, reg))
+sseMovPartMemory(l, 0x12)
+sseMovPartMemory(h, 0x16)
+
+genAssembler movddup:
+    (regXmm, rmXmm): (0xF2, rex, 0x0F, 0x12, modrm(rm, reg))
+genAssembler movsldup:
+    (regXmm, rmXmm): (0xF3, rex, 0x0F, 0x12, modrm(rm, reg))
+genAssembler movshdup:
+    (regXmm, rmXmm): (0xF3, rex, 0x0F, 0x16, modrm(rm, reg))
+
+genAssembler unpcklps:
+    (regXmm, rmXmm): (rex, 0x0F, 0x14, modrm(rm, reg))
+genAssembler unpcklpd:
+    (regXmm, rmXmm): (0x66, rex, 0x0F, 0x14, modrm(rm, reg))
+genAssembler unpckhps:
+    (regXmm, rmXmm): (rex, 0x0F, 0x15, modrm(rm, reg))
+genAssembler unpckhpd:
+    (regXmm, rmXmm): (0x66, rex, 0x0F, 0x15, modrm(rm, reg))
+
+genAssembler movaps:
+    (regXmm, rmXmm): (rex, 0x0F, 0x28, modrm(rm, reg))
+    (rmXmm, regXmm): (rex, 0x0F, 0x29, modrm(rm, reg))
+genAssembler movapd:
+    (regXmm, rmXmm): (0x66, rex, 0x0F, 0x28, modrm(rm, reg))
+    (rmXmm, regXmm): (0x66, rex, 0x0F, 0x29, modrm(rm, reg))
+
+genAssembler movd:
+    (regXmm, rm32): (0x66, rex, 0x0F, 0x6E, modrm(rm, reg))
+    (rm32, regXmm): (0x66, rex, 0x0F, 0x7E, modrm(rm, reg))
+genAssembler movq:
+    (regXmm, rm64): (0x66, op64, 0x0F, 0x6E, modrm(rm, reg))
+    (rm64, regXmm): (0x66, op64, 0x0F, 0x7E, modrm(rm, reg))
+
+genAssembler movdqa:
+    (regXmm, rmXmm): (0x66, rex, 0x0F, 0x6F, modrm(rm, reg))
+    (rmXmm, regXmm): (0x66, rex, 0x0F, 0x7F, modrm(rm, reg))
+genAssembler movdqu:
+    (regXmm, rmXmm): (0xF3, rex, 0x0F, 0x6F, modrm(rm, reg))
+    (rmXmm, regXmm): (0xF3, rex, 0x0F, 0x7F, modrm(rm, reg))
+
+genAssembler cvtsi2ss:
+    (regXmm, rm32): (0xF3, rex, 0x0F, 0x2A, modrm(rm, reg))
+    (regXmm, rm64): (0xF3, op64, 0x0F, 0x2A, modrm(rm, reg))
+genAssembler cvtsi2sd:
+    (regXmm, rm32): (0xF2, rex, 0x0F, 0x2A, modrm(rm, reg))
+    (regXmm, rm64): (0xF2, op64, 0x0F, 0x2A, modrm(rm, reg))
+
+genAssembler cvttss2si:
+    (reg32, rmXmm): (0xF3, rex, 0x0F, 0x2C, modrm(rm, reg))
+    (reg64, rmXmm): (0xF3, op64, 0x0F, 0x2C, modrm(rm, reg))
+genAssembler cvttsd2si:
+    (reg32, rmXmm): (0xF2, rex, 0x0F, 0x2C, modrm(rm, reg))
+    (reg64, rmXmm): (0xF2, op64, 0x0F, 0x2C, modrm(rm, reg))
+
+genAssembler cvtss2si:
+    (reg32, rmXmm): (0xF3, rex, 0x0F, 0x2D, modrm(rm, reg))
+    (reg64, rmXmm): (0xF3, op64, 0x0F, 0x2D, modrm(rm, reg))
+genAssembler cvtsd2si:
+    (reg32, rmXmm): (0xF2, rex, 0x0F, 0x2D, modrm(rm, reg))
+    (reg64, rmXmm): (0xF2, op64, 0x0F, 0x2D, modrm(rm, reg))
+
+genAssembler ucomiss:
+    (regXmm, rmXmm): (rex, 0x0F, 0x2E, modrm(rm, reg))
+genAssembler ucomisd:
+    (regXmm, rmXmm): (0x66, rex, 0x0F, 0x2E, modrm(rm, reg))
+
+genAssembler comiss:
+    (regXmm, rmXmm): (rex, 0x0F, 0x2F, modrm(rm, reg))
+genAssembler comisd:
+    (regXmm, rmXmm): (0x66, rex, 0x0F, 0x2F, modrm(rm, reg))
+
+genAssembler cvtps2pd:
+    (regXmm, rmXmm): (rex, 0x0F, 0x5A, modrm(rm, reg))
+genAssembler cvtpd2ps:
+    (regXmm, rmXmm): (0x66, rex, 0x0F, 0x5A, modrm(rm, reg))
+
+genAssembler cvtss2sd:
+    (regXmm, rmXmm): (0xF3, rex, 0x0F, 0x5A, modrm(rm, reg))
+genAssembler cvtsd2ss:
+    (regXmm, rmXmm): (0xF2, rex, 0x0F, 0x5A, modrm(rm, reg))
+
+genAssembler cvtdq2ps:
+    (regXmm, rmXmm): (rex, 0x0F, 0x5B, modrm(rm, reg))
+genAssembler cvtps2dq:
+    (regXmm, rmXmm): (0x66, rex, 0x0F, 0x5B, modrm(rm, reg))
+genAssembler cvttps2dq:
+    (regXmm, rmXmm): (0xF3, rex, 0x0F, 0x5B, modrm(rm, reg))
+
+genAssembler cvtpd2dq:
+    (regXmm, rmXmm): (0xF2, rex, 0x0F, 0xE6, modrm(rm, reg))
+genAssembler cvttpd2dq:
+    (regXmm, rmXmm): (0x66, rex, 0x0F, 0xE6, modrm(rm, reg))
+genAssembler cvtdq2pd:
+    (regXmm, rmXmm): (0xF3, rex, 0x0F, 0xE6, modrm(rm, reg))

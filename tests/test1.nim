@@ -18,6 +18,7 @@ template testNormalOp(name): untyped =
     # memory
     s.name(mem32(regRax), regEax)
     s.name(regR13, mem64(regRsp))
+    s.name(regR13, mem64(regRsp, regRax))
     s.name(regR8d, mem32(regRbp))
     s.name(regR8d, mem32(regRax, -2, rmScale8))
     s.name(mem32(regRax, regR12, -1, rmScale8), regEdx)
@@ -26,6 +27,39 @@ template testNormalOp(name): untyped =
     s.name(mem8(regRbp, 0x12, rmScale4), regSpl)
     s.name(mem16(regRax), 0x21)
     s.name(mem16(addr s.data[0]), 0x21)
+
+template testSseNormalOp(name): untyped =
+    s.`name ps`(regXmm0, reg(regXmm1))
+    s.`name ss`(regXmm15, reg(regXmm0))
+    s.`name pd`(regXmm2, reg(regXmm3))
+    s.`name sd`(regXmm1, reg(regXmm10))
+    s.`name sd`(regXmm1, memXmm(regR12))
+    s.`name ss`(regXmm12, memXmm(regR12))
+    s.`name ps`(regXmm12, memXmm(regR12))
+
+template testSseWeirdOp(name): untyped =
+    s.`name ps`(regXmm0, reg(regXmm10))
+    s.`name pd`(regXmm0, reg(regXmm10))
+    s.`name pd`(regXmm9, memXmm(regRax, regRax))
+
+template testSseMovLike(name): untyped =
+    s.name(regXmm0, reg(regXmm12))
+    s.name(regXmm12, memXmm(regRax))
+    s.name(reg(regXmm12), regXmm14)
+    s.name(memXmm(regR12), regXmm14)
+
+template testSseMovLikeOneWay(name): untyped =
+    s.name(regXmm0, reg(regXmm12))
+    s.name(regXmm12, memXmm(regRax))
+    s.name(regXmm14, reg(regXmm12))
+
+template testSseRegOnly(name): untyped =
+    s.name(regXmm0, regXmm12)
+    s.name(regXmm14, regXmm12)
+
+template testSsePartMemOp(name): untyped =
+    s.name(memMemOnly(regRax), regXmm12)
+    s.name(regXmm14, memMemOnly(regR15, regR12))
 
 proc main =
     var
@@ -145,12 +179,12 @@ proc main =
     s.idiv(reg(regRax))
     s.idiv(mem64(addr data[0]))
 
-    s.lea(regAx, mem32(regRax, regRax, -1, rmScale4))
-    s.lea(regAx, mem64(regRax, regRax, -1, rmScale4))
-    s.lea(regEax, mem32(regRax, regRax, -1, rmScale4))
-    s.lea(regEax, mem64(regRax, regRax, -1, rmScale4))
-    s.lea(regRax, mem32(regRax, regRax, -1, rmScale4))
-    s.lea(regRax, mem64(regRax, regRax, -1, rmScale4))
+    s.lea32(regAx, memMemOnly(regRax, regRax, -1, rmScale4))
+    s.lea64(regAx, memMemOnly(regRax, regRax, -1, rmScale4))
+    s.lea32(regEax, memMemOnly(regRax, regRax, -1, rmScale4))
+    s.lea64(regEax, memMemOnly(regRax, regRax, -1, rmScale4))
+    s.lea32(regRax, memMemOnly(regRax, regRax, -1, rmScale4))
+    s.lea64(regRax, memMemOnly(regRax, regRax, -1, rmScale4))
 
     s.nop(1)
     s.nop(2)
@@ -189,6 +223,86 @@ proc main =
     s.movsxd(regRax, reg(regEax))
     s.movsxd(regRax, reg(regR8d))
     s.movsxd(regR14, reg(regR8d))
+
+    testSseNormalOp(sqrt)
+    testSseNormalOp(add)
+    testSseNormalOp(mul)
+    testSseNormalOp(sub)
+    testSseNormalOp(min)
+    testSseNormalOp(max)
+
+    testSseWeirdOp(aand)
+    testSseWeirdOp(andn)
+    testSseWeirdOp(oor)
+    testSseWeirdOp(xxor)
+
+    testSseMovLike(movups)
+    testSseMovLike(movss)
+    testSseMovLike(movupd)
+    testSseMovLike(movsd)
+    testSseMovLikeOneWay(movddup)
+    testSseMovLikeOneWay(movsldup)
+    testSseMovLikeOneWay(movshdup)
+    testSseMovLikeOneWay(unpcklps)
+    testSseMovLikeOneWay(unpcklpd)
+    testSseMovLikeOneWay(unpckhps)
+    testSseMovLikeOneWay(unpckhpd)
+    testSseMovLike(movaps)
+    testSseMovLike(movapd)
+    testSseMovLike(movdqa)
+    testSseMovLike(movdqu)
+
+    testSseRegOnly(movhlps)
+    testSseRegOnly(movlhps)
+
+    testSsePartMemOp(movlps)
+    testSsePartMemOp(movlpd)
+    testSsePartMemOp(movhps)
+    testSsePartMemOp(movhpd)
+
+    s.movd(regXmm0, reg(regEax))
+    s.movd(regXmm6, mem32(regRsp))
+    s.movd(reg(regEax), regXmm0)
+    s.movd(mem32(regR10), regXmm6)
+    s.movq(regXmm0, reg(regRax))
+    s.movq(regXmm6, mem64(regRsp))
+    s.movq(reg(regRax), regXmm0)
+    s.movq(mem64(regR10), regXmm6)
+
+    s.cvtsi2ss(regXmm0, mem32(regR12))
+    s.cvtsi2ss(regXmm15, reg(regR12))
+
+    s.cvtsi2sd(regXmm0, reg(regR12))
+    s.cvtsi2sd(regXmm15, mem64(regR12))
+
+    s.cvttss2si(regR12d, reg(regXmm8))
+    s.cvttss2si(regR12, memXmm(regRax))
+
+    s.cvttsd2si(regR12, memXmm(regRax, regRbp))
+    s.cvttsd2si(regRax, reg(regXmm0))
+
+    s.cvtss2si(regR12d, memXmm(regR8))
+    s.cvtss2si(regR9, reg(regXmm1))
+
+    s.cvtsd2si(regR12d, memXmm(regR8))
+    s.cvtsd2si(regR9, reg(regXmm1))
+
+    s.ucomiss(regXmm0, reg(regXmm1))
+    s.ucomiss(regXmm0, memXmm(regRax))
+
+    s.comiss(regXmm0, reg(regXmm1))
+    s.comiss(regXmm12, memXmm(regRax))
+
+    testSseMovLikeOneWay(cvtps2pd)
+    testSseMovLikeOneWay(cvtpd2ps)
+    testSseMovLikeOneWay(cvtss2sd)
+    testSseMovLikeOneWay(cvtsd2ss)
+    testSseMovLikeOneWay(cvtdq2ps)
+    testSseMovLikeOneWay(cvtps2dq)
+    testSseMovLikeOneWay(cvttps2dq)
+    testSseMovLikeOneWay(cvtdq2pd)
+    testSseMovLikeOneWay(cvtpd2dq)
+    testSseMovLikeOneWay(cvttpd2dq)
 
     let stream = newFileStream("assembled.bin", fmWrite)
     stream.writeData(addr data[0], s.offset)
