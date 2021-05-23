@@ -658,6 +658,8 @@ genAssembler bswap:
 
 genAssembler ret: (): (0xC3)
 
+genAssembler int3: (): (0xCC)
+
 template bitcountOp(name, op) {.dirty.} =
     genAssembler name:
         (reg16, rm16): (op16, rex, 0x0F, op, modrm(rm, reg))
