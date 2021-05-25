@@ -145,8 +145,8 @@ type
     RmXmm* = Rm[RegisterXmm]
     RmMemOnly* = Rm[void]
 
-    BackwardsLabel = distinct int
-    ForwardsLabel = object
+    BackwardsLabel* = distinct int
+    ForwardsLabel* = object
         isLongJmp: bool
         offset: int32
 
