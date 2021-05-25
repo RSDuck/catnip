@@ -172,7 +172,14 @@ proc main =
     s.ddiv(reg(regR12b))
     s.ddiv(mem16(regRsp))
     s.ddiv(reg(regRax))
+    s.ddiv(reg(regEax))
+    s.ddiv(reg(regR10d))
     s.ddiv(mem64(regR14))
+
+    s.test(reg(regR10d), regR10d)
+    let skipDiv0 = s.jcc(condZero, false)
+    s.ddiv(reg(regR10d))
+    s.label skipDiv0
 
     s.idiv(reg(regR12b))
     s.idiv(mem16(regRsp))
@@ -308,6 +315,26 @@ proc main =
     s.shufps(regXmm12, memXmm(regRax), cast[int8](0xFF))
     s.shufpd(regXmm0, reg(regXmm1), 0)
     s.shufpd(regXmm12, memXmm(regRax), cast[int8](0x3))
+
+    block:
+        s.test(reg(regR8d), regR8d)
+        let skipDiv0 = s.jcc(condZero, false)
+        s.cmp(reg(regR8d), -1)
+        let divisorNotMinusOne = s.jcc(condNotZero, false)
+        s.cmp(reg(regEax), low(int32))
+        let skipDivLowest = s.jcc(condZero, false)
+        s.label(divisorNotMinusOne)
+        s.idiv(reg(regR8d))
+        s.label skipDiv0
+        s.label skipDivLowest
+
+    s.cwd()
+    s.cdq()
+    s.cqo()
+
+    s.cbw()
+    s.cwde()
+    s.cdqe()
 
     let stream = newFileStream("assembled.bin", fmWrite)
     stream.writeData(addr data[0], s.offset)
