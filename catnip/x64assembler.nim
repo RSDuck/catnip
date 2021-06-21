@@ -163,7 +163,13 @@ when defined(windows):
 
         stackShadow* = 0x20
 else:
-    {.fatal: "add parameters for system v here".}
+    const
+        param1* = regRdi
+        param2* = regRsi
+        param3* = regRdx
+        param4* = regRcx
+
+        stackShadow* = 0
 
 proc curAdr*(assembler: AssemblerX64): int64 =
     cast[int64](assembler.data) + assembler.offset
