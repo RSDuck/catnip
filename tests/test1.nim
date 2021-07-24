@@ -336,6 +336,12 @@ proc main =
     s.cwde()
     s.cdqe()
 
+    block:
+        let funcStart = s.label()
+        s.sub(reg(param1), 1)
+        s.jcc(condNotZero, funcStart)
+        s.ret()
+
     let stream = newFileStream("assembled.bin", fmWrite)
     stream.writeData(addr data[0], s.offset)
     stream.close()

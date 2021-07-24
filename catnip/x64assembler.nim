@@ -792,7 +792,7 @@ proc jcc*(assembler: var AssemblerX64, cc: Condition, target: pointer) =
     let offset8 = int32(cast[int64](target) - (assembler.curAdr + 2))
     if offset8.fitsInt8():
         assembler.write 0x70'u8 + uint8(cc)
-        assembler.write offset8
+        assembler.write cast[int8](offset8)
     else:
         let offset = int32(cast[int64](target) - (assembler.curAdr + 6))
         assembler.write 0x0F'u8
