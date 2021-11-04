@@ -2,7 +2,7 @@
 
 A nondescriptively named runtime assembler e.g. for JIT recompilers.
 
-**Why not improve the assembler in [laser](https://github.com/numforge/laser)(now found [here](https://github.com/mratsim/photon-jit.git)?**
+**Why not improve the assembler in [laser](https://github.com/numforge/laser)(now found [here](https://github.com/mratsim/photon-jit.git))?**
 
 I thought about doing this, but decided against it, mainly because registers are defined as compile time `static` parameters for some reasons? In any way it makes dynamic register allocation impossible (which is irreplacable for any decent JIT recompiler I can think of).
 
