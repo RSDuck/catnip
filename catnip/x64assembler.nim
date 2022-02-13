@@ -739,6 +739,14 @@ genAssembler cmov:
     (reg32, rm32, cond): (rex, 0x0F, 0x40 + ord(cond), modrm(rm, reg))
     (reg64, rm64, cond): (op64, 0x0F, 0x40 + ord(cond), modrm(rm, reg))
 
+genAssembler movbe:
+    (reg16, rmMemOnly): (op16, rex, 0x0F, 0x38, 0xF0, modrm(rm, reg))
+    (reg32, rmMemOnly): (rex, 0x0F, 0x38, 0xF0, modrm(rm, reg))
+    (reg64, rmMemOnly): (op64, 0x0F, 0x38, 0xF0, modrm(rm, reg))
+    (rmMemOnly, reg16): (op16, rex, 0x0F, 0x38, 0xF1, modrm(rm, reg))
+    (rmMemOnly, reg32): (rex, 0x0F, 0x38, 0xF1, modrm(rm, reg))
+    (rmMemOnly, reg64): (op64, 0x0F, 0x38, 0xF1, modrm(rm, reg))
+
 genAssembler cwd: (): (op16, 0x99)
 genAssembler cdq: (): (0x99)
 genAssembler cqo: (): (op64, 0x99)
