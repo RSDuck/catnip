@@ -1029,3 +1029,15 @@ genAssembler shufps:
     (regXmm, rmXmm, imm8): (rex, 0x0F, 0xC6, modrm(rm, reg), imm8)
 genAssembler shufpd:
     (regXmm, rmXmm, imm8): (0x66, rex, 0x0F, 0xC6, modrm(rm, reg), imm8)
+
+genAssembler pushf:
+    (): (op16, 0x9C)
+
+genAssembler pushfq:
+    (): (0x9C)
+
+genAssembler popf:
+    (): (op16, 0x9D)
+
+genAssembler popfq:
+    (): (0x9D)
