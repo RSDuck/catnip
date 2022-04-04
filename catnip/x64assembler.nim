@@ -778,7 +778,7 @@ proc jmp*(assembler: var AssemblerX64, longJmp: bool): ForwardsLabel =
     ForwardsLabel(isLongJmp: longJmp, offset: int32(assembler.offset))
 
 genAssembler jmp:
-    (rm64): (rex, 0xFF, modrm(rm, 2))
+    (rm64): (rex, 0xFF, modrm(rm, 4))
 
 proc call*(assembler: var AssemblerX64, target: pointer) =
     let offset = int32(cast[int64](target) - (cast[int64](assembler.data) + assembler.offset + 5))
@@ -794,7 +794,7 @@ proc call*(assembler: var AssemblerX64, longJmp: bool): ForwardsLabel =
     ForwardsLabel(isLongJmp: longJmp, offset: int32(assembler.offset))
 
 genAssembler call:
-    (rm64): (rex, 0xFF, modrm(rm, 4))
+    (rm64): (rex, 0xFF, modrm(rm, 2))
 
 proc jcc*(assembler: var AssemblerX64, cc: Condition, target: pointer) =
     let offset8 = int32(cast[int64](target) - (assembler.curAdr + 2))
