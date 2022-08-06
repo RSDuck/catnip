@@ -37,10 +37,24 @@ template testSseNormalOp(name): untyped =
     s.`name ss`(regXmm12, memXmm(regR12))
     s.`name ps`(regXmm12, memXmm(regR12))
 
+template testAvxNormalOp(name): untyped =
+    s.`name ps`(regXmm10, regXmm0, reg(regXmm1))
+    s.`name ss`(regXmm2, regXmm15, reg(regXmm0))
+    s.`name pd`(regXmm15, regXmm2, reg(regXmm3))
+    s.`name sd`(regXmm3, regXmm1, reg(regXmm10))
+    s.`name sd`(regXmm2, regXmm1, memXmm(regR12))
+    s.`name ss`(regXmm10, regXmm12, memXmm(regR12))
+    s.`name ps`(regXmm2, regXmm12, memXmm(regR12))
+
 template testSseWeirdOp(name): untyped =
     s.`name ps`(regXmm0, reg(regXmm10))
     s.`name pd`(regXmm0, reg(regXmm10))
     s.`name pd`(regXmm9, memXmm(regRax, regRax))
+
+template testAvxWeirdOp(name): untyped =
+    s.`name ps`(regXmm12, regXmm0, reg(regXmm10))
+    s.`name pd`(regXmm3, regXmm0, reg(regXmm10))
+    s.`name pd`(regXmm7, regXmm9, memXmm(regRax, regRax))
 
 template testSseMovLike(name): untyped =
     s.name(regXmm0, reg(regXmm12))
@@ -60,6 +74,15 @@ template testSseRegOnly(name): untyped =
 template testSsePartMemOp(name): untyped =
     s.name(memMemOnly(regRax), regXmm12)
     s.name(regXmm14, memMemOnly(regR15, regR12))
+
+template testFma(name): untyped =
+    s.`name 123 ps`(regXmm10, regXmm0, reg(regXmm1))
+    s.`name 213 ss`(regXmm2, regXmm15, reg(regXmm0))
+    s.`name 231 pd`(regXmm15, regXmm2, reg(regXmm3))
+    s.`name 123 sd`(regXmm3, regXmm1, reg(regXmm10))
+    s.`name 123 sd`(regXmm2, regXmm1, memXmm(regR12))
+    s.`name 231 ss`(regXmm10, regXmm12, memXmm(regR12))
+    s.`name 213 ps`(regXmm2, regXmm12, memXmm(regR12))
 
 proc main =
     var
@@ -366,6 +389,33 @@ proc main =
     s.pushfq()
     s.popf()
     s.popfq()
+
+    s.vsqrtps(regXmm0, reg(regXmm1))
+    s.vsqrtss(regXmm15, regXmm5, reg(regXmm0))
+    s.vsqrtpd(regXmm2, reg(regXmm3))
+    s.vsqrtsd(regXmm1, regXmm12, reg(regXmm10))
+    s.vsqrtsd(regXmm1, regXmm0, memXmm(regR12))
+    s.vsqrtss(regXmm12, regXmm3, memXmm(regR12))
+    s.vsqrtps(regXmm12, memXmm(regR12))
+    testAvxNormalOp(vadd)
+    testAvxNormalOp(vmul)
+    testAvxNormalOp(vsub)
+    testAvxNormalOp(vmin)
+    testAvxNormalOp(vmax)
+
+    testAvxWeirdOp(vaand)
+    testAvxWeirdOp(vandn)
+    testAvxWeirdOp(voor)
+    testAvxWeirdOp(vxxor)
+
+    s.andn(regRax, regR12, reg(regRsp))
+    s.andn(regR10d, regEsi, mem32(regRcx, regR12))
+    s.andn(regEax, regEcx, mem32(regRcx, regRax))
+
+    testFma(vfmadd)
+    testFma(vfmsub)
+    testFma(vfnmadd)
+    testFma(vfnmsub)
 
     let stream = newFileStream("assembled.bin", fmWrite)
     stream.writeData(addr data[0], s.offset)

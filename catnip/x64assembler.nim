@@ -1,5 +1,5 @@
 import
-    macros
+    macros, options
 
 type
     Register8* = enum
@@ -225,34 +225,60 @@ proc writeField(assembler: var AssemblerX64, top, middle, bottom: byte) =
 proc writeRex(assembler: var AssemblerX64, w, r, x, b: bool) =
     assembler.write 0x40'u8 or (uint8(w) shl 3) or (uint8(r) shl 2) or (uint8(x) shl 1) or uint8(b)
 
+proc writeVex2(assembler: var AssemblerX64, r: bool, vvvv: byte, L: bool, pp: uint8) =
+    assembler.write 0xC5'u8
+    assembler.write (uint8(not r) shl 7) or ((not(vvvv) and 0xF) shl 3) or (uint8(L) shl 2) or pp
+
+proc writeVex3(assembler: var AssemblerX64, r, x, b, w, L: bool, m_mmmm, vvvv, pp: uint8) =
+    assembler.write 0xC4'u8
+    assembler.write (uint8(not r) shl 7) or (uint8(not x) shl 6) or (uint8(not b) shl 5) or m_mmmm
+    assembler.write (uint8(w) shl 7) or ((not(vvvv) and 0xF) shl 3) or (uint8(L) shl 2) or pp
+
 proc needsRex8[T](reg: T): bool =
     when T is Register8:
         reg in {regSpl, regBpl, regSil, regDil}
     else:
         false
 
-proc writeRex[T, U](assembler: var AssemblerX64, rm: Rm[T], reg: U, is64Bit: bool) =
+proc getRexInfo[T, U](is64bit: bool, rm: Rm[T], reg: U): Option[tuple[w, r, x, b: bool]] =
     let precond = is64Bit or reg.needsRex8() or ord(reg) >= 8
 
     case rm.kind
     of rmDirect:
         when T isnot void:
             if precond or ord(rm.directReg) >= 8 or rm.directReg.needsRex8():
-                assembler.writeRex is64Bit, ord(reg) >= 8, false, ord(rm.directReg) >= 8
+                return some((is64Bit, ord(reg) >= 8, false, ord(rm.directReg) >= 8))
         else:
             raiseAssert("memory only operand. Direct register not allowed (how was this constructed?)")
     of rmIndirectScaled:
         if precond or ord(rm.simpleIndex) >= 8 or rm.simpleIndex.needsRex8():
-            if rm.simpleScale == rmScale1:
-                assembler.writeRex is64Bit, ord(reg) >= 8, false, ord(rm.simpleIndex) >= 8
-            else:
-                assembler.writeRex is64Bit, ord(reg) >= 8, ord(rm.simpleIndex) >= 8, false
+            return (if rm.simpleScale == rmScale1:
+                    some((is64Bit, ord(reg) >= 8, false, ord(rm.simpleIndex) >= 8))
+                else:
+                    some((is64Bit, ord(reg) >= 8, ord(rm.simpleIndex) >= 8, false)))
     of rmIndirectScaledAndBase:
         if precond or ord(rm.base) >= 8 or ord(rm.baseIndex) >= 8:
-            assembler.writeRex is64Bit, ord(reg) >= 8, ord(rm.baseIndex) >= 8, ord(rm.base) >= 8
+            return some((is64Bit, ord(reg) >= 8, ord(rm.baseIndex) >= 8, ord(rm.base) >= 8))
     of rmIndirectGlobal:
         if precond:
-            assembler.writeRex is64Bit, ord(reg) >= 8, false, false
+            return some((is64Bit, ord(reg) >= 8, false, false))
+
+    none((bool, bool, bool, bool))
+
+proc writeRex[T, U](assembler: var AssemblerX64, rm: Rm[T], reg: U, is64Bit: bool) =
+    let bits = getRexInfo(is64Bit, rm, reg)
+    if bits.isSome:
+        let (w, r, x, b) = bits.get
+        assembler.writeRex w, r, x, b
+
+proc writeVex[T, U](assembler: var AssemblerX64, rm: Rm[T], is64bit, L: bool, reg: U, reg2: Option[U], pp, m_mmmm: int) =
+    let
+        rexbits = getRexInfo(is64Bit, rm, reg).get(default((bool, bool, bool, bool)))
+        reg2Bits = if reg2.isSome: int(reg2.get) else: 0
+    if m_mmmm == 1 and not(rexbits.w or rexbits.x or rexbits.b):
+        assembler.writeVex2 rexbits.r, byte(reg2Bits), L, byte(pp)
+    else:
+        assembler.writeVex3 rexbits.r, rexbits.x, rexbits.b, rexbits.w, L, byte(m_mmmm), byte(reg2Bits), byte(pp)
 
 proc writeModrm[T, U](assembler: var AssemblerX64, rm: Rm[T], reg: U): int =
     case rm.kind
@@ -318,7 +344,7 @@ proc fixupRip[T](assembler: var AssemblerX64, modrm: Rm[T], location: int) =
         let offset = int32(cast[int64](modrm.globalPtr) - assembler.curAdr)
         copyMem(addr assembler.data[location], unsafeAddr offset, 4)
 
-proc genEmit(desc, assembler: NimNode): NimNode =
+proc genEmit(desc, assembler: NimNode, hasReg2: bool): NimNode =
     if desc.kind notin {nnkTupleConstr, nnkPar}:
         return desc
 
@@ -376,6 +402,42 @@ proc genEmit(desc, assembler: NimNode): NimNode =
             of "modrm":
                 result.add(quote do:
                     let `fixupRipOffset` = writeModrm(`assembler`, `modrmRm`, `modrmReg`))
+            of "vex", "vex64":
+                for i in 1..<child.len:
+                    child[i].expectKind nnkIntLit
+                var
+                    pp = 0
+                    m_mmmm = -1
+                if child.len >= 2:
+                    pp = case child[1].intVal
+                        of 0x66: 1
+                        of 0xF3: 2
+                        of 0xF2: 3
+                        else: 0
+                let
+                    prefixOffset = ord(pp != 0)
+                    numOpPrefixes = child.len-1-prefixOffset
+                if numOpPrefixes >= 1 and child[1+prefixOffset].intVal == 0x0F:
+                    if numOpPrefixes == 1:
+                        m_mmmm = 1
+                    elif numOpPrefixes == 2:
+                        case child[1+prefixOffset+1].intVal
+                        of 0x38: m_mmmm = 2
+                        of 0x3A: m_mmmm = 3
+                        else: discard
+                if m_mmmm == -1:
+                    error("Unknown vex prefix sequence", child)
+
+                let
+                    is64Bit = $child[0] == "vex64"
+                    reg2 = if hasReg2:
+                            let reg2 = ident"reg2"; (quote do: some(`reg2`))
+                        else:
+                            (quote do: none(typeof `modrmReg`))
+
+                result.add(quote do:
+                    writeVex(`assembler`, `modrmRm`, bool(`is64Bit`), false, `modrmReg`, `reg2`, `pp`, `m_mmmm`))
+                
             of "rex":
                 let base = child[1]
                 if hasModrm:
@@ -398,6 +460,8 @@ proc genEmit(desc, assembler: NimNode): NimNode =
 
 macro genAssembler(name, instr: untyped): untyped =
     result = newStmtList()
+
+    var hasReg2 = false
 
     for variant in instr:
         variant.expectKind nnkCall
@@ -425,49 +489,57 @@ macro genAssembler(name, instr: untyped): untyped =
         finalProc[3].add(newIdentDefs(assembler, nnkVarTy.newTree(bindSym"AssemblerX64")))
 
         for param in params:
-            case $param
-            of "reg8":
-                finalProc[3].add(newIdentDefs(ident"reg", bindSym"Register8"))
-            of "reg16":
-                finalProc[3].add(newIdentDefs(ident"reg", bindSym"Register16"))
-            of "reg32":
-                finalProc[3].add(newIdentDefs(ident"reg", bindSym"Register32"))
-            of "reg64":
-                finalProc[3].add(newIdentDefs(ident"reg", bindSym"Register64"))
-            of "regXmm":
-                finalProc[3].add(newIdentDefs(ident"reg", bindSym"RegisterXmm"))
-            of "regXmm2":
-                finalProc[3].add(newIdentDefs(ident"reg2", bindSym"RegisterXmm"))
-            of "rm8":
-                finalProc[3].add(newIdentDefs(ident"rm", bindSym"Rm8"))
-            of "rm16":
-                finalProc[3].add(newIdentDefs(ident"rm", bindSym"Rm16"))
-            of "rm32":
-                finalProc[3].add(newIdentDefs(ident"rm", bindSym"Rm32"))
-            of "rm64":
-                finalProc[3].add(newIdentDefs(ident"rm", bindSym"Rm64"))
-            of "rmXmm":
-                finalProc[3].add(newIdentDefs(ident"rm", bindSym"RmXmm"))
-            of "rmMemOnly":
-                finalProc[3].add(newIdentDefs(ident"rm", bindSym"RmMemOnly"))
-            of "imm8":
-                finalProc[3].add(newIdentDefs(ident"imm", bindSym"int8"))
-            of "imm16":
-                finalProc[3].add(newIdentDefs(ident"imm", bindSym"int16"))
-            of "imm32":
-                finalProc[3].add(newIdentDefs(ident"imm", bindSym"int32"))
-            of "imm64":
-                finalProc[3].add(newIdentDefs(ident"imm", bindSym"int64"))
-            of "cond":
-                finalProc[3].add(newIdentDefs(ident"cond", bindSym"Condition"))
-            else:
-                error("invalid param", param)
-
+            let (name, typ) = case $param
+                of "reg8":
+                    (ident"reg", bindSym"Register8")
+                of "reg16":
+                    (ident"reg", bindSym"Register16")
+                of "reg32":
+                    (ident"reg", bindSym"Register32")
+                of "reg32_2":
+                    hasReg2 = true
+                    (ident"reg2", bindSym"Register32")
+                of "reg64":
+                    (ident"reg", bindSym"Register64")
+                of "reg64_2":
+                    hasReg2 = true
+                    (ident"reg2", bindSym"Register64")
+                of "regXmm":
+                    (ident"reg", bindSym"RegisterXmm")
+                of "regXmm2":
+                    hasReg2 = true
+                    (ident"reg2", bindSym"RegisterXmm")
+                of "rm8":
+                    (ident"rm", bindSym"Rm8")
+                of "rm16":
+                    (ident"rm", bindSym"Rm16")
+                of "rm32":
+                    (ident"rm", bindSym"Rm32")
+                of "rm64":
+                    (ident"rm", bindSym"Rm64")
+                of "rmXmm":
+                    (ident"rm", bindSym"RmXmm")
+                of "rmMemOnly":
+                    (ident"rm", bindSym"RmMemOnly")
+                of "imm8":
+                    (ident"imm", bindSym"int8")
+                of "imm16":
+                    (ident"imm", bindSym"int16")
+                of "imm32":
+                    (ident"imm", bindSym"int32")
+                of "imm64":
+                    (ident"imm", bindSym"int64")
+                of "cond":
+                    (ident"cond", bindSym"Condition")
+                else:
+                    error("invalid param", param)
+                    (nil, nil) # shouldn't be necessary, but error is not noreturn
+            finalProc[3].add(newIdentDefs(name, typ))
         if emit.len == 1 and emit[0].kind == nnkIfStmt:
             for branch in emit[0]:
-                branch[^1][^1] = genEmit(branch[^1][^1], assembler)
+                branch[^1][^1] = genEmit(branch[^1][^1], assembler, hasReg2)
         else:
-            emit[^1] = genEmit(emit[^1], assembler)
+            emit[^1] = genEmit(emit[^1], assembler, hasReg2)
 
         finalProc[^1] = emit
 
@@ -526,6 +598,10 @@ normalOp(aand, opRmLeft8 = 0x20, opRmLeft = 0x21, opRmRight8 = 0x22, opRmRight =
 normalOp(oor, opRmLeft8 = 0x08, opRmLeft = 0x09, opRmRight8 = 0x0A, opRmRight = 0x0B, opAl = 0x0C, opAx = 0x0D, opImm = 0x1)
 normalOp(xxor, opRmLeft8 = 0x30, opRmLeft = 0x31, opRmRight8 = 0x32, opRmRight = 0x33, opAl = 0x34, opAx = 0x35, opImm = 0x6)
 normalOp(cmp, opRmLeft8 = 0x38, opRmLeft = 0x39, opRmRight8 = 0x3A, opRmRight = 0x3B, opAl = 0x3C, opAx = 0x3D, opImm = 0x7)
+
+genAssembler andn:
+    (reg32, reg32_2, rm32): (vex(0x0F, 0x38), 0xF2, modrm(rm, reg))
+    (reg64, reg64_2, rm64): (vex64(0x0F, 0x38), 0xF2, modrm(rm, reg))
 
 genAssembler mov:
     (rm8, reg8): (rex, 0x88, modrm(rm, reg))
@@ -877,13 +953,22 @@ proc nop*(assembler: var AssemblerX64, bytes = 1) =
             assembler.write 0x00'u32
             remainingBytes -= 9
 
-template normalSseOp(name, op): untyped {.dirty.} =
+template normalSseOp(name, op; triop = true): untyped {.dirty.} =
     genAssembler `name ps`: (regXmm, rmXmm): (rex, 0x0F, op, modrm(rm, reg))
     genAssembler `name ss`: (regXmm, rmXmm): (0xF3, rex, 0x0F, op, modrm(rm, reg))
     genAssembler `name pd`: (regXmm, rmXmm): (0x66, rex, 0x0F, op, modrm(rm, reg))
     genAssembler `name sd`: (regXmm, rmXmm): (0xF2, rex, 0x0F, op, modrm(rm, reg))
 
-normalSseOp(sqrt, 0x51)
+    genAssembler `v name ss`: (regXmm, regXmm2, rmXmm): (vex(0xF3, 0x0F), op, modrm(rm, reg))
+    genAssembler `v name sd`: (regXmm, regXmm2, rmXmm): (vex(0xF2, 0x0F), op, modrm(rm, reg))
+    when triop:
+        genAssembler `v name ps`: (regXmm, regXmm2, rmXmm): (vex(0x0F), op, modrm(rm, reg))
+        genAssembler `v name pd`: (regXmm, regXmm2, rmXmm): (vex(0x66, 0x0F), op, modrm(rm, reg))
+    else:
+        genAssembler `v name ps`: (regXmm, rmXmm): (vex(0x0F), op, modrm(rm, reg))
+        genAssembler `v name pd`: (regXmm, rmXmm): (vex(0x66, 0x0F), op, modrm(rm, reg))
+
+normalSseOp(sqrt, 0x51, false)
 normalSseOp(add, 0x58)
 normalSseOp(mul, 0x59)
 normalSseOp(sub, 0x5C)
@@ -894,6 +979,9 @@ normalSseOp(max, 0x5F)
 template weirdSseBitOp(name, op): untyped {.dirty.} =
     genAssembler `name ps`: (regXmm, rmXmm): (rex, 0x0F, op, modrm(rm, reg))
     genAssembler `name pd`: (regXmm, rmXmm): (0x66, rex, 0x0F, op, modrm(rm, reg))
+
+    genAssembler `v name ps`: (regXmm, regXmm2, rmXmm): (vex(0x0F), op, modrm(rm, reg))
+    genAssembler `v name pd`: (regXmm, regXmm2, rmXmm): (vex(0x66, 0x0F), op, modrm(rm, reg))
 
 weirdSseBitOp(aand, 0x54)
 weirdSseBitOp(andn, 0x55)
@@ -1029,6 +1117,25 @@ genAssembler shufps:
     (regXmm, rmXmm, imm8): (rex, 0x0F, 0xC6, modrm(rm, reg), imm8)
 genAssembler shufpd:
     (regXmm, rmXmm, imm8): (0x66, rex, 0x0F, 0xC6, modrm(rm, reg), imm8)
+
+template genFma(name, opcode123, opcode213, opcode231, opcodeSingle123, opcodeSingle213, opcodeSingle231): untyped {.dirty.} =
+    genAssembler `vf name 123 pd`: (regXmm, regXmm2, rmXmm): (vex64(0x66, 0x0F, 0x38), opcode123, modrm(rm, reg))
+    genAssembler `vf name 213 pd`: (regXmm, regXmm2, rmXmm): (vex64(0x66, 0x0F, 0x38), opcode213, modrm(rm, reg))
+    genAssembler `vf name 231 pd`: (regXmm, regXmm2, rmXmm): (vex64(0x66, 0x0F, 0x38), opcode231, modrm(rm, reg))
+    genAssembler `vf name 123 ps`: (regXmm, regXmm2, rmXmm): (vex(0x66, 0x0F, 0x38), opcode123, modrm(rm, reg))
+    genAssembler `vf name 213 ps`: (regXmm, regXmm2, rmXmm): (vex(0x66, 0x0F, 0x38), opcode213, modrm(rm, reg))
+    genAssembler `vf name 231 ps`: (regXmm, regXmm2, rmXmm): (vex(0x66, 0x0F, 0x38), opcode231, modrm(rm, reg))
+    genAssembler `vf name 123 sd`: (regXmm, regXmm2, rmXmm): (vex64(0x66, 0x0F, 0x38), opcodeSingle123, modrm(rm, reg))
+    genAssembler `vf name 213 sd`: (regXmm, regXmm2, rmXmm): (vex64(0x66, 0x0F, 0x38), opcodeSingle213, modrm(rm, reg))
+    genAssembler `vf name 231 sd`: (regXmm, regXmm2, rmXmm): (vex64(0x66, 0x0F, 0x38), opcodeSingle231, modrm(rm, reg))
+    genAssembler `vf name 123 ss`: (regXmm, regXmm2, rmXmm): (vex(0x66, 0x0F, 0x38), opcodeSingle123, modrm(rm, reg))
+    genAssembler `vf name 213 ss`: (regXmm, regXmm2, rmXmm): (vex(0x66, 0x0F, 0x38), opcodeSingle213, modrm(rm, reg))
+    genAssembler `vf name 231 ss`: (regXmm, regXmm2, rmXmm): (vex(0x66, 0x0F, 0x38), opcodeSingle231, modrm(rm, reg))
+
+genFma(madd, 0x98, 0xA8, 0xB8, 0x99, 0xA9, 0xB9)
+genFma(msub, 0x9A, 0xAA, 0xBA, 0x9B, 0xAB, 0xBB)
+genFma(nmadd, 0x9C, 0xAC, 0xBC, 0x9D, 0xAD, 0xBD)
+genFma(nmsub, 0x9E, 0xAE, 0xBE, 0x9F, 0xAF, 0xBF)
 
 genAssembler pushf:
     (): (op16, 0x9C)
