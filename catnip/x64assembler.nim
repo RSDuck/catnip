@@ -1118,17 +1118,17 @@ genAssembler shufps:
 genAssembler shufpd:
     (regXmm, rmXmm, imm8): (0x66, rex, 0x0F, 0xC6, modrm(rm, reg), imm8)
 
-template genFma(name, opcode123, opcode213, opcode231, opcodeSingle123, opcodeSingle213, opcodeSingle231): untyped {.dirty.} =
-    genAssembler `vf name 123 pd`: (regXmm, regXmm2, rmXmm): (vex64(0x66, 0x0F, 0x38), opcode123, modrm(rm, reg))
+template genFma(name, opcode132, opcode213, opcode231, opcodeSingle132, opcodeSingle213, opcodeSingle231): untyped {.dirty.} =
+    genAssembler `vf name 132 pd`: (regXmm, regXmm2, rmXmm): (vex64(0x66, 0x0F, 0x38), opcode132, modrm(rm, reg))
     genAssembler `vf name 213 pd`: (regXmm, regXmm2, rmXmm): (vex64(0x66, 0x0F, 0x38), opcode213, modrm(rm, reg))
     genAssembler `vf name 231 pd`: (regXmm, regXmm2, rmXmm): (vex64(0x66, 0x0F, 0x38), opcode231, modrm(rm, reg))
-    genAssembler `vf name 123 ps`: (regXmm, regXmm2, rmXmm): (vex(0x66, 0x0F, 0x38), opcode123, modrm(rm, reg))
+    genAssembler `vf name 132 ps`: (regXmm, regXmm2, rmXmm): (vex(0x66, 0x0F, 0x38), opcode132, modrm(rm, reg))
     genAssembler `vf name 213 ps`: (regXmm, regXmm2, rmXmm): (vex(0x66, 0x0F, 0x38), opcode213, modrm(rm, reg))
     genAssembler `vf name 231 ps`: (regXmm, regXmm2, rmXmm): (vex(0x66, 0x0F, 0x38), opcode231, modrm(rm, reg))
-    genAssembler `vf name 123 sd`: (regXmm, regXmm2, rmXmm): (vex64(0x66, 0x0F, 0x38), opcodeSingle123, modrm(rm, reg))
+    genAssembler `vf name 132 sd`: (regXmm, regXmm2, rmXmm): (vex64(0x66, 0x0F, 0x38), opcodeSingle132, modrm(rm, reg))
     genAssembler `vf name 213 sd`: (regXmm, regXmm2, rmXmm): (vex64(0x66, 0x0F, 0x38), opcodeSingle213, modrm(rm, reg))
     genAssembler `vf name 231 sd`: (regXmm, regXmm2, rmXmm): (vex64(0x66, 0x0F, 0x38), opcodeSingle231, modrm(rm, reg))
-    genAssembler `vf name 123 ss`: (regXmm, regXmm2, rmXmm): (vex(0x66, 0x0F, 0x38), opcodeSingle123, modrm(rm, reg))
+    genAssembler `vf name 132 ss`: (regXmm, regXmm2, rmXmm): (vex(0x66, 0x0F, 0x38), opcodeSingle132, modrm(rm, reg))
     genAssembler `vf name 213 ss`: (regXmm, regXmm2, rmXmm): (vex(0x66, 0x0F, 0x38), opcodeSingle213, modrm(rm, reg))
     genAssembler `vf name 231 ss`: (regXmm, regXmm2, rmXmm): (vex(0x66, 0x0F, 0x38), opcodeSingle231, modrm(rm, reg))
 

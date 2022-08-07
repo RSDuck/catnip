@@ -76,11 +76,11 @@ template testSsePartMemOp(name): untyped =
     s.name(regXmm14, memMemOnly(regR15, regR12))
 
 template testFma(name): untyped =
-    s.`name 123 ps`(regXmm10, regXmm0, reg(regXmm1))
+    s.`name 132 ps`(regXmm10, regXmm0, reg(regXmm1))
     s.`name 213 ss`(regXmm2, regXmm15, reg(regXmm0))
     s.`name 231 pd`(regXmm15, regXmm2, reg(regXmm3))
-    s.`name 123 sd`(regXmm3, regXmm1, reg(regXmm10))
-    s.`name 123 sd`(regXmm2, regXmm1, memXmm(regR12))
+    s.`name 132 sd`(regXmm3, regXmm1, reg(regXmm10))
+    s.`name 132 sd`(regXmm2, regXmm1, memXmm(regR12))
     s.`name 231 ss`(regXmm10, regXmm12, memXmm(regR12))
     s.`name 213 ps`(regXmm2, regXmm12, memXmm(regR12))
 
