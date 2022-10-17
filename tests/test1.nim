@@ -417,6 +417,14 @@ proc main =
     testFma(vfnmadd)
     testFma(vfnmsub)
 
+    s.sar(reg(regRax))
+    s.sar(reg(regR15))
+    s.sshl(reg(regRax))
+    s.sshl(reg(regR15))
+    s.movsxd(regRax, reg(regR15d))
+    s.movsxd(regR15, reg(regEax))
+    s.movsxd(regR15, reg(regR15d))
+
     let stream = newFileStream("assembled.bin", fmWrite)
     stream.writeData(addr data[0], s.offset)
     stream.close()

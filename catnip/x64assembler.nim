@@ -646,7 +646,7 @@ extendOp(movzx, 0xB6, 0xB7)
 extendOp(movsx, 0xBE, 0xBF)
 
 genAssembler movsxd:
-    (reg64, rm32): (rex, 0x63, modrm(rm, reg))
+    (reg64, rm32): (op64, 0x63, modrm(rm, reg))
 
 template shiftOp(name, op): untyped {.dirty.} =
     genAssembler name:
